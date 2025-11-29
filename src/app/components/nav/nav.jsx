@@ -15,6 +15,7 @@ const Nav = () => {
   const [searchResults, setSearchResults] = useState([]);
   const [isTyping, setIsTyping] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const searchRef = useRef(null);
   const pathname = usePathname();
 
@@ -42,6 +43,7 @@ const Nav = () => {
     const clearSearch = () => {
       setSearchTerm("");
       setSearchResults([]);
+      setIsTyping(false);
     };
     window.addEventListener("popstate", clearSearch);
     return () => window.removeEventListener("popstate", clearSearch);
@@ -66,23 +68,37 @@ const Nav = () => {
   useEffect(() => {
     if (!isTyping || searchTerm.trim() === "") {
       setSearchResults([]);
+      setIsLoading(false);
       return;
     }
 
+    setIsLoading(true);
+    
     const delayDebounce = setTimeout(async () => {
       try {
         const res = await fetch(
           `https://api.anivibe.uz/api/animes/?search=${encodeURIComponent(searchTerm)}`
         );
+        
+        if (!res.ok) {
+          throw new Error(`HTTP error! status: ${res.status}`);
+        }
+        
         const data = await res.json();
         const list = Array.isArray(data.results) ? data.results : data;
-        setSearchResults(list);
+        setSearchResults(list || []);
       } catch (error) {
         console.error("Search fetch error:", error);
+        setSearchResults([]);
+      } finally {
+        setIsLoading(false);
       }
     }, 500);
 
-    return () => clearTimeout(delayDebounce);
+    return () => {
+      clearTimeout(delayDebounce);
+      setIsLoading(false);
+    };
   }, [searchTerm, isTyping]);
 
   // ⌨️ Enter bosilganda tozalash
@@ -107,6 +123,13 @@ const Nav = () => {
     return () => document.removeEventListener("click", handleClickOutside);
   }, []);
 
+  // Inputni tozalash funksiyasi
+  const clearSearch = () => {
+    setSearchTerm("");
+    setSearchResults([]);
+    setIsTyping(false);
+  };
+
   return (
     <>
       <div className={`nav ${isHomePage ? 'nav-home' : 'nav-other'} ${isScrolled ? 'nav-scrolled' : ''}`}>
@@ -120,39 +143,66 @@ const Nav = () => {
         {/* 🔍 Qidiruv va kategoriyalar */}
         <div className="nav-menu-search" ref={searchRef}>
           <div className="search">
-            <input
-              type="text"
-              placeholder="Anime qidirish..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              onFocus={() => setIsTyping(true)}
-              onKeyDown={handleKeyPress}
-              className="search-input"
-            />
+            <div className="search-input-container">
+              <input
+                type="text"
+                placeholder="Anime qidirish..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                onFocus={() => setIsTyping(true)}
+                onKeyDown={handleKeyPress}
+                className="search-input"
+              />
+              {searchTerm && (
+                <button 
+                  className="clear-search-btn"
+                  onClick={clearSearch}
+                  type="button"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
 
-            {/* 🔽 Qidiruv natijalari - endi shu yerda */}
-            {searchResults.length > 0 && (
+            {/* 🔽 Qidiruv natijalari */}
+            {isTyping && searchTerm.trim() !== "" && (
               <div className="search-results">
-                {searchResults.map((anime) => (
-                  <Link
-                    key={anime.id}
-                    href={`/anime/${anime.slug}`}
-                    className="search-item"
-                    onClick={() => {
-                      setSearchTerm("");
-                      setSearchResults([]);
-                      setIsTyping(false);
-                    }}
-                  >
-                    <div className="result-container">
-                      <Image src={anime.main_image} alt={anime.title} width={60} height={60} unoptimized />
-                      <div>
-                        <h3>{anime.title}</h3>
-                        <p>{anime.description}</p>
+                {isLoading ? (
+                  <div className="search-loading">
+                    <p>Qidirilmoqda...</p>
+                  </div>
+                ) : searchResults.length > 0 ? (
+                  searchResults.map((anime) => (
+                    <Link
+                      key={anime.id}
+                      href={`/anime/${anime.slug}`}
+                      className="search-item"
+                      onClick={clearSearch}
+                    >
+                      <div className="result-container">
+                        <Image 
+                          src={anime.main_image} 
+                          alt={anime.title} 
+                          width={60} 
+                          height={60} 
+                          unoptimized 
+                          onError={(e) => {
+                            e.target.src = defImage.src;
+                          }}
+                        />
+                        <div className="result-info">
+                          <h3>{anime.title}</h3>
+                          <p>{anime.description}</p>
+                        </div>
                       </div>
-                    </div>
-                  </Link>
-                ))}
+                    </Link>
+                  ))
+                ) : (
+                  <div className="no-results">
+                    <p>Hech narsa topilmadi</p>
+                    <span>Boshqa so'zlar bilan qayta urinib ko'ring</span>
+                  </div>
+                )}
               </div>
             )}
 
@@ -201,6 +251,9 @@ const Nav = () => {
                   alt={user.username || "user"}
                   width={35}
                   height={35}
+                  onError={(e) => {
+                    e.target.src = defImage.src;
+                  }}
                 />
               </Link>
             ) : (
